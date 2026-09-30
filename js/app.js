@@ -159,6 +159,88 @@
     return out.slice(0, 6);
   }
 
+  /* ---------- 车站/机场检索（未手写居住地城市的兜底） ---------- */
+  async function fetchTransitHubs(lat, lng) {
+    var query = '[out:json][timeout:25];(' +
+      'node["railway"="station"](around:40000,' + lat + ',' + lng + ');' +
+      'node["aeroway"="aerodrome"](around:100000,' + lat + ',' + lng + ');' +
+      'way["aeroway"="aerodrome"](around:100000,' + lat + ',' + lng + ');' +
+      ');out center 80;';
+    var url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
+    var res = await fetch(url);
+    if (!res.ok) throw new Error('Overpass hubs ' + res.status);
+    var json = await res.json();
+    var stations = [];
+    (json.elements || []).forEach(function (el) {
+      var tags = el.tags || {};
+      var la = el.lat != null ? el.lat : (el.center && el.center.lat);
+      var lo = el.lon != null ? el.lon : (el.center && el.center.lon);
+      if (la == null) return;
+      var isAirport = /aerodrome|airstrip/.test(tags.aeroway || '');
+      // 跳过地铁/轻轨站（它们也是 railway=station）
+      if (!isAirport && /subway|light_rail|monorail|tram/.test((tags.station || '') + (tags.subway || ''))) return;
+      var name = tags['name:zh'] || tags.name || '';
+      if (!name) name = isAirport ? '当地机场' : '火车站';
+      stations.push({ name: name, lat: la, lng: lo, kind: isAirport ? '机场' : '火车站' });
+    });
+    var seen = {};
+    var dedup = [];
+    stations.forEach(function (s) {
+      if (seen[s.name]) return;
+      seen[s.name] = 1;
+      dedup.push(s);
+    });
+    dedup.sort(function (a, b) { return haversineKm({ lat: lat, lng: lng }, a) - haversineKm({ lat: lat, lng: lng }, b); });
+    return dedup.slice(0, 6);
+  }
+
+  /* ---------- 居住地推荐 ---------- */
+  function buildGenericAreas(center, stations) {
+    var areas = [{ name: '市中心/商圈', lat: center.lat, lng: center.lng, desc: '城市中心，商业餐饮集中', env: '购物吃饭方便，去各景点与车站都较均衡' }];
+    var rail = stations.filter(function (s) { return s.kind !== '机场'; })[0];
+    if (rail) areas.push({ name: '火车站周边', lat: rail.lat, lng: rail.lng, desc: rail.name + '附近', env: '紧邻车站，适合晚到早走的中转旅客' });
+    return areas;
+  }
+
+  function scoreAreas(areas, stations, attractions) {
+    var rail = stations.filter(function (s) { return s.kind !== '机场'; });
+    var airport = stations.filter(function (s) { return s.kind === '机场'; })[0] || null;
+    var attrs = (attractions || []).filter(function (a) { return a.lat != null; });
+    function sum(arr) { return arr.reduce(function (s, v) { return s + v; }, 0); }
+
+    return areas.map(function (area) {
+      var dAttrs = attrs.map(function (p) { return haversineKm(area, p); });
+      var avgAttr = dAttrs.length ? Math.round(sum(dAttrs) / dAttrs.length * 10) / 10 : null;
+      var nearRail = rail.length ? Math.min.apply(null, rail.map(function (s) { return haversineKm(area, s); })) : null;
+      var airportDist = airport ? haversineKm(area, airport) : null;
+      var score = 100
+        - (avgAttr != null ? avgAttr * 6 : 15)
+        - (nearRail != null ? nearRail * 2.5 : 8)
+        - (airportDist != null ? airportDist * 0.4 : 0);
+      return {
+        area: area, avgAttr: avgAttr,
+        nearRail: nearRail != null ? Math.round(nearRail * 10) / 10 : null,
+        airportDist: airportDist != null ? Math.round(airportDist) : null,
+        score: Math.max(0, Math.round(score))
+      };
+    }).sort(function (a, b) { return b.score - a.score; });
+  }
+
+  async function buildStayData(destKey, destGeo, attractions) {
+    var curated = global.STAY_DATA && global.STAY_DATA[destKey];
+    var stations, areas;
+    if (curated) {
+      stations = curated.stations.slice();
+      areas = curated.areas.slice();
+    } else {
+      stations = [];
+      try { stations = await fetchTransitHubs(destGeo.lat, destGeo.lng); } catch (e) { stations = []; }
+      areas = buildGenericAreas(destGeo, stations);
+    }
+    var scored = scoreAreas(areas, stations, attractions);
+    return { stations: stations, scored: scored };
+  }
+
   /* ---------- 行程生成 ---------- */
   function distribute(attrs, days) {
     if (!attrs.length) return [];
@@ -384,6 +466,47 @@
     }
   }
 
+  function renderStay(stations, scored) {
+    var wrap = $('stayWrap');
+    if (!scored || !scored.length) {
+      wrap.innerHTML = '<p class="empty">未能获取居住地信息，建议住在市中心或火车站附近。</p>';
+      return;
+    }
+    var top = scored[0];
+    var html = '';
+    if (stations && stations.length) {
+      html += '<p class="stay-hubs">🚉 主要车站/机场：' +
+        stations.slice(0, 6).map(function (s) { return s.name + '（' + s.kind + '）'; }).join('、') + '</p>';
+    }
+    html += '<div class="stay-top">' +
+      '<div class="stay-top-head"><span class="stay-badge">首选</span><strong>' + top.area.name + '</strong>' +
+        '<span class="stay-score">综合便利度 ' + top.score + '</span></div>' +
+      '<p class="stay-desc">' + top.area.desc + '</p>' +
+      '<p class="stay-env">🌿 环境：' + top.area.env + '</p>' +
+      '<div class="stay-metrics">' +
+        (top.avgAttr != null ? '<span>📍 距景点平均约 ' + top.avgAttr + ' km</span>' : '') +
+        (top.nearRail != null ? '<span>🚉 距车站约 ' + top.nearRail + ' km</span>' : '') +
+        (top.airportDist != null ? '<span>✈️ 距机场约 ' + top.airportDist + ' km</span>' : '') +
+      '</div>' +
+    '</div>';
+
+    if (scored.length > 1) {
+      html += '<div class="stay-alt">';
+      scored.slice(1, 3).forEach(function (s) {
+        html += '<div class="stay-alt-item">' +
+          '<strong>' + s.area.name + '</strong> <span class="stay-score">' + s.score + '</span>' +
+          '<p>' + s.area.desc + '（' + s.area.env + '）</p>' +
+          '<div class="stay-metrics">' +
+            (s.avgAttr != null ? '<span>📍 景点 ' + s.avgAttr + 'km</span>' : '') +
+            (s.nearRail != null ? '<span>🚉 车站 ' + s.nearRail + 'km</span>' : '') +
+          '</div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+    wrap.innerHTML = html;
+  }
+
   var TYPE_NAME = {
     city: '都市', historic: '历史文化', coastal: '海滨', beach: '海岛度假',
     mountain: '山水/自然', oldtown: '古城古镇'
@@ -462,12 +585,13 @@
         days: dur.days, attractions: attractions
       });
 
-      // 7) 穿搭 / 物品
+      // 7) 穿搭 / 物品 / 居住地
       var cloth = TripWeather.recommendClothing(weather, destType, dur.days);
       var items = TripWeather.recommendItems({
         weather: weather, destType: destType, region: destData ? destData.region : '',
         travelMode: travelMode, playMode: playMode, tripDays: dur.days
       });
+      var stay = await buildStayData(found ? found.key : null, destGeo, attractions);
 
       // 8) 渲染
       $('results').hidden = false;
@@ -486,6 +610,7 @@
       renderWeather(weather, dur.days);
       renderClothing(cloth);
       renderItems(items);
+      renderStay(stay.stations, stay.scored);
       renderRoute(itinerary);
       renderTransit(attractions);
       $('transitCard').hidden = playMode !== '公共交通';

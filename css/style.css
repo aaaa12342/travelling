@@ -212,6 +212,23 @@ html, body {
 .transit-leg .tl-acc { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .transit-leg .tl-route { font-size: 13.5px; margin-top: 8px; background: #f0faf3; border-radius: 8px; padding: 8px 10px; }
 
+/* 居住地推荐 */
+.stay-hubs { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.stay-top { border: 1px solid var(--brand-soft); border-left: 4px solid var(--brand); border-radius: 12px; padding: 14px 16px; background: linear-gradient(120deg, #f3f7ff, #fafcff); }
+.stay-top-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stay-badge { font-size: 11px; color: #fff; background: var(--brand); padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+.stay-top-head strong { font-size: 16px; }
+.stay-score { font-size: 12px; color: var(--brand-dark); background: var(--brand-soft); padding: 2px 8px; border-radius: 999px; font-weight: 600; margin-left: auto; }
+.stay-desc { margin: 8px 0 4px; font-size: 14px; }
+.stay-env { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.stay-metrics { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--brand-dark); }
+.stay-metrics span { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; }
+.stay-alt { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+.stay-alt-item { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #fff; }
+.stay-alt-item strong { font-size: 14px; }
+.stay-alt-item p { margin: 6px 0 8px; font-size: 13px; color: var(--muted); }
+.stay-alt-item .stay-score { margin-left: 8px; }
+
 .empty { color: var(--muted); font-size: 14px; margin: 0; }
 
 /* Map */
