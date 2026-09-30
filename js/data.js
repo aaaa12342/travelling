@@ -768,17 +768,57 @@
     };
   }
 
+  function cityDataByKey(key) {
+    var all = lookupAll();
+    return all.db[key] || all.rich[key] || all.extra[key] || null;
+  }
+
+  /** 小景点 → 合并所属城市信息，生成完整目的地对象 */
+  function makeScenicDestination(key, sc) {
+    var parent = cityDataByKey(sc.parent);
+    var data = {
+      name: sc.name,
+      province: parent ? parent.province : '',
+      region: parent ? parent.region : '华东',
+      type: parent ? parent.type : 'mountain',
+      lat: sc.lat, lng: sc.lng,
+      overview: sc.desc,
+      foods: parent ? parent.foods : [],
+      tips: (sc.get ? '前往：' + sc.get : '') + (parent && parent.tips ? '。' + parent.tips : ''),
+      attractions: [{
+        name: sc.name, lat: sc.lat, lng: sc.lng,
+        category: sc.category, duration: sc.duration,
+        desc: sc.desc, highlights: sc.highlights,
+        metro: null, get: sc.get
+      }],
+      parent: sc.parent,
+      parentLat: parent ? parent.lat : null,
+      parentLng: parent ? parent.lng : null,
+      scenic: true
+    };
+    return { key: sc.name, data: data, curated: true, scenic: true };
+  }
+
   function findDestination(name) {
     var key = normalizeCity(name);
+
+    // 1) 小景点（精确，含别名）
+    var scKey = key;
+    if (global.SCENIC_ALIASES && global.SCENIC_ALIASES[scKey]) scKey = global.SCENIC_ALIASES[scKey];
+    if (global.SCENIC && global.SCENIC[scKey]) {
+      return makeScenicDestination(scKey, global.SCENIC[scKey]);
+    }
+
+    // 2) 城市（含别名）
     if (ALIASES[key]) key = ALIASES[key];
     var all = lookupAll();
     if (all.db[key]) return { key: key, data: all.db[key], curated: true };
     if (all.rich[key]) return { key: key, data: all.rich[key], curated: true };
     if (all.extra[key]) return { key: key, data: all.extra[key], curated: false };
 
-    // 模糊匹配（仅当前缀命中唯一时）
+    // 3) 模糊匹配（城市 + 小景点，仅当前缀命中唯一时）
     var cand = [];
-    [all.db, all.rich, all.extra].forEach(function (src) {
+    [all.db, all.rich, all.extra, (global.SCENIC || {})].forEach(function (src) {
       Object.keys(src).forEach(function (k) {
         if (key && (k.indexOf(key) === 0 || key.indexOf(k) === 0)) cand.push(k);
       });
@@ -789,6 +829,7 @@
       if (all.db[ck]) return { key: ck, data: all.db[ck], curated: true };
       if (all.rich[ck]) return { key: ck, data: all.rich[ck], curated: true };
       if (all.extra[ck]) return { key: ck, data: all.extra[ck], curated: false };
+      if (global.SCENIC && global.SCENIC[ck]) return makeScenicDestination(ck, global.SCENIC[ck]);
     }
     return null;
   }

@@ -226,8 +226,9 @@
     }).sort(function (a, b) { return b.score - a.score; });
   }
 
-  async function buildStayData(destKey, destGeo, attractions) {
-    var curated = global.STAY_DATA && global.STAY_DATA[destKey];
+  async function buildStayData(destData, destGeo, attractions) {
+    var stayKey = destData ? (destData.parent || destData.name) : null;
+    var curated = global.STAY_DATA && global.STAY_DATA[stayKey];
     var stations, areas;
     if (curated) {
       stations = curated.stations.slice();
@@ -235,7 +236,20 @@
     } else {
       stations = [];
       try { stations = await fetchTransitHubs(destGeo.lat, destGeo.lng); } catch (e) { stations = []; }
-      areas = buildGenericAreas(destGeo, stations);
+      if (destData && destData.scenic) {
+        areas = [{
+          name: '景区周边/游客中心', lat: destGeo.lat, lng: destGeo.lng,
+          desc: '紧邻' + destData.name, env: '就近游览最方便，客栈民宿集中'
+        }];
+        if (destData.parentLat != null && destData.parent != null) {
+          areas.push({
+            name: destData.parent + '市区/县城', lat: destData.parentLat, lng: destData.parentLng,
+            desc: destData.parent + '城区', env: '配套齐全、进出方便，需乘车往返景区'
+          });
+        }
+      } else {
+        areas = buildGenericAreas(destGeo, stations);
+      }
     }
     var scored = scoreAreas(areas, stations, attractions);
     return { stations: stations, scored: scored };
@@ -336,7 +350,7 @@
       html += '<div class="weather-day">' +
         '<div class="d-name">' + TripWeather.formatDate(times[i]) + '</div>' +
         '<div class="d-icon">' + inf.icon + '</div>' +
-        '<div class="d-temp">' + maxT + '° / ' + minT + '°</div>' +
+        '<div class="d-temp"><span class="lo">低温 ' + minT + '°</span><span class="hi">高温 ' + maxT + '°</span></div>' +
         '<div class="d-prec">' + inf.desc + (prec != null ? ' · 降水 ' + prec + '%' : '') + '</div>' +
         '</div>';
     }
@@ -535,21 +549,25 @@
     try {
       var dur = DURATION_MAP[duration] || { days: 3, nights: 2 };
 
-      // 1) 地理编码
-      var geo = await Promise.all([
-        TripWeather.geocodeCity(startName),
-        TripWeather.geocodeCity(destName)
-      ]);
-      var startGeo = geo[0], destGeo = geo[1];
-      var km = haversineKm(startGeo, destGeo);
-
-      // 2) 天气
-      var weather = await TripWeather.fetchWeather(destGeo.lat, destGeo.lng, dur.days, startDate);
-
-      // 3) 目的地知识库 / 兜底
+      // 1) 目的地库查找（城市 / 小景点）
       var found = findDestination(destName);
       var destData = found ? found.data : null;
       var destType = destData ? destData.type : 'city';
+
+      // 2) 地理编码：终点命中库则直接用其坐标（更精确），否则 Open-Meteo
+      var startGeo = await TripWeather.geocodeCity(startName);
+      var destGeo;
+      if (destData && destData.lat != null && destData.lng != null) {
+        destGeo = { name: destData.name, lat: destData.lat, lng: destData.lng };
+      } else {
+        destGeo = await TripWeather.geocodeCity(destName);
+      }
+      var km = haversineKm(startGeo, destGeo);
+
+      // 3) 天气
+      var weather = await TripWeather.fetchWeather(destGeo.lat, destGeo.lng, dur.days, startDate);
+
+      // 4) 景点（库内景点，否则运行时检索）
       var attractions = (destData && destData.attractions) ? destData.attractions.slice() : [];
       var foods = (destData && destData.foods) ? destData.foods.slice() : [];
       if (!attractions.length) {
@@ -591,7 +609,7 @@
         weather: weather, destType: destType, region: destData ? destData.region : '',
         travelMode: travelMode, playMode: playMode, tripDays: dur.days
       });
-      var stay = await buildStayData(found ? found.key : null, destGeo, attractions);
+      var stay = await buildStayData(destData, destGeo, attractions);
 
       // 8) 渲染
       $('results').hidden = false;
