@@ -185,6 +185,33 @@ html, body {
 .attr-card p, .food-card p { margin: 0; font-size: 13.5px; color: var(--muted); }
 .attr-card .idx { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 12px; align-items: center; justify-content: center; flex: 0 0 auto; }
 
+/* 景点卡片可展开 */
+.attr-card .attr-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: 10px; }
+.attr-card .attr-head h4 { margin: 0; }
+.attr-card .attr-toggle { color: var(--muted); font-size: 14px; transition: transform .18s; flex: 0 0 auto; }
+.attr-card.open .attr-toggle { transform: rotate(180deg); }
+.attr-card .attr-desc { margin-top: 6px; }
+.attr-card .attr-body { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.attr-card.open .attr-body { display: block; }
+.attr-card .attr-hl strong { font-size: 13px; color: var(--brand-dark); }
+.attr-card .attr-hl ul { margin: 6px 0 0; padding-left: 18px; }
+.attr-card .attr-hl li { font-size: 13.5px; color: var(--ink); margin: 3px 0; }
+.attr-card .attr-meta { margin: 10px 0 8px; font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.attr-link {
+  display: inline-block; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--brand);
+  text-decoration: none; border-bottom: 1px dashed var(--brand);
+}
+.attr-link:hover { color: var(--brand-dark); }
+
+/* 景点间交通衔接 */
+.transit-wrap { display: flex; flex-direction: column; gap: 12px; }
+.transit-leg { border: 1px solid var(--line); border-left: 4px solid var(--green); border-radius: 10px; padding: 12px 14px; background: #fff; }
+.transit-leg .tl-title { font-size: 14.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.transit-leg .tl-title .idx { background: var(--green); }
+.transit-leg .tl-dist { font-size: 12px; color: var(--muted); font-weight: 500; }
+.transit-leg .tl-acc { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.transit-leg .tl-route { font-size: 13.5px; margin-top: 8px; background: #f0faf3; border-radius: 8px; padding: 8px 10px; }
+
 .empty { color: var(--muted); font-size: 14px; margin: 0; }
 
 /* Map */

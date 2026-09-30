@@ -190,7 +190,7 @@
     // 天气相关
     if (rainy) cats[1].items.push('雨伞 / 雨衣');
     if (snowy || temp <= 5) cats[1].items.push('润唇膏', '护手霜', '暖宝宝');
-    if (temp >= 25) cats[1].items.push('驱蚊液', '止痒膏');
+    if (temp >= 18) cats[1].items.push('驱蚊液 / 驱蚊手环', '止痒膏');
     if (temp >= 28 || opts.destType === 'beach') cats[1].items.push('遮阳伞');
 
     // 出行方式相关
@@ -219,10 +219,18 @@
 
     // 目的地类型
     if (opts.destType === 'beach' || opts.destType === 'coastal') {
-      cats.push({ name: '🏖️ 海滨', items: ['泳衣泳裤', '防水手机袋', '沙滩拖鞋'] });
+      cats.push({ name: '🏖️ 海滨', items: ['泳衣泳裤', '高倍防水防晒霜', '防水手机袋', '沙滩拖鞋', '太阳镜', '遮阳帽', '驱蚊液'] });
     }
     if (opts.destType === 'mountain') {
-      cats.push({ name: '⛰️ 山地/高原', items: ['登山鞋', '保温杯', '便携氧气瓶（高原）'] });
+      var mItems = ['登山杖', '登山鞋', '冲锋衣 / 速干衣', '头灯 / 手电', '高能量零食', '保温杯', '驱蚊液'];
+      if (opts.region === '西南') mItems.push('便携氧气瓶 / 抗高反药（高原）');
+      cats.push({ name: '⛰️ 山地/高原', items: mItems });
+    }
+    if (opts.destType === 'oldtown') {
+      cats.push({ name: '🏘️ 古城古镇', items: ['舒适徒步鞋', '相机', '驱蚊液'] });
+    }
+    if (opts.destType === 'historic') {
+      cats.push({ name: '🏛️ 历史文化', items: ['舒适徒步鞋', '充电宝（拍照多）'] });
     }
 
     // 通用补充

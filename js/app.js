@@ -255,6 +255,12 @@
     $('routeWrap').innerHTML = html;
   }
 
+  function accessText(a) {
+    if (a.metro) return a.metro.line + '·' + a.metro.station + '（' + a.metro.walk + '）';
+    if (a.get) return a.get;
+    return '查询当地公交 / 打车前往';
+  }
+
   function renderAttractions(attrs) {
     var wrap = $('attractionsWrap');
     if (!attrs || !attrs.length) {
@@ -263,12 +269,59 @@
     }
     var html = '';
     attrs.forEach(function (a, i) {
+      var hl = (a.highlights && a.highlights.length)
+        ? '<div class="attr-hl"><strong>✨ 具体玩点</strong><ul>' +
+          a.highlights.map(function (h) { return '<li>' + h + '</li>'; }).join('') + '</ul></div>'
+        : '';
+      var searchUrl = 'https://www.baidu.com/s?wd=' + encodeURIComponent(a.name + ' 景点介绍 游玩攻略');
       html += '<div class="attr-card">' +
-        '<h4><span class="idx">' + (i + 1) + '</span>' + a.name + ' <span class="tag">' + (a.category || '景点') + '</span></h4>' +
-        '<p>' + a.desc + '</p>' +
-        (a.duration ? '<p style="margin-top:6px;font-size:12px;">⏱ 建议游玩：' + a.duration + '</p>' : '') +
+        '<div class="attr-head" onclick="toggleAttr(this.parentNode)">' +
+          '<h4><span class="idx">' + (i + 1) + '</span>' + a.name + ' <span class="tag">' + (a.category || '景点') + '</span></h4>' +
+          '<span class="attr-toggle">▾</span>' +
+        '</div>' +
+        '<p class="attr-desc">' + a.desc + '</p>' +
+        '<div class="attr-body">' +
+          hl +
+          '<div class="attr-meta">' +
+            (a.duration ? '<div>⏱ 建议游玩：' + a.duration + '</div>' : '') +
+            '<div>🚇 交通：' + accessText(a) + '</div>' +
+          '</div>' +
+          '<a class="attr-link" target="_blank" rel="noopener" href="' + searchUrl + '">🔍 查看详细介绍 →</a>' +
+        '</div>' +
         '</div>';
     });
+    wrap.innerHTML = html;
+  }
+
+  function renderTransit(attrs) {
+    var wrap = $('transitWrap');
+    if (!attrs || attrs.length < 2) {
+      wrap.innerHTML = '<p class="empty">景点较少，无需跨景点交通衔接。</p>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < attrs.length - 1; i++) {
+      var a = attrs[i], b = attrs[i + 1];
+      var km = haversineKm(a, b);
+      var sameLine = a.metro && b.metro && a.metro.line === b.metro.line;
+      var routeHint;
+      if (sameLine) {
+        routeHint = '乘 <b>' + a.metro.line + '</b>（' + a.metro.station + ' → ' + b.metro.station + '）可直达';
+      } else if (a.metro && b.metro) {
+        routeHint = '乘 ' + a.metro.line + '（' + a.metro.station + '）→ 换乘 ' + b.metro.line + '（' + b.metro.station + '），具体换乘请查地图';
+      } else {
+        routeHint = '两景点间建议按地图查询公交/地铁，或打车前往';
+      }
+      var searchUrl = 'https://www.baidu.com/s?wd=' + encodeURIComponent(a.name + ' 到 ' + b.name + ' 地铁 公交 怎么坐');
+      html += '<div class="transit-leg">' +
+        '<div class="tl-title"><span class="idx">' + (i + 1) + '→' + (i + 2) + '</span> ' + a.name + ' → ' + b.name +
+          ' <span class="tl-dist">约 ' + fmtKm(km) + '</span></div>' +
+        '<div class="tl-acc">🚇 ' + a.name + '：' + accessText(a) + '</div>' +
+        '<div class="tl-acc">🚇 ' + b.name + '：' + accessText(b) + '</div>' +
+        '<div class="tl-route">🛤️ ' + routeHint + '</div>' +
+        '<a class="attr-link" target="_blank" rel="noopener" href="' + searchUrl + '">🔍 查完整换乘方案 →</a>' +
+        '</div>';
+    }
     wrap.innerHTML = html;
   }
 
@@ -296,6 +349,9 @@
     city: '都市', historic: '历史文化', coastal: '海滨', beach: '海岛度假',
     mountain: '山水/自然', oldtown: '古城古镇'
   };
+
+  // 景点卡片展开/收起
+  window.toggleAttr = function (card) { card.classList.toggle('open'); };
 
   /* ---------- 主流程 ---------- */
   async function generate() {
@@ -370,7 +426,7 @@
       // 7) 穿搭 / 物品
       var cloth = TripWeather.recommendClothing(weather, destType, dur.days);
       var items = TripWeather.recommendItems({
-        weather: weather, destType: destType,
+        weather: weather, destType: destType, region: destData ? destData.region : '',
         travelMode: travelMode, playMode: playMode, tripDays: dur.days
       });
 
@@ -390,6 +446,8 @@
       renderClothing(cloth);
       renderItems(items);
       renderRoute(itinerary);
+      renderTransit(attractions);
+      $('transitCard').hidden = playMode !== '公共交通';
       renderAttractions(attractions);
       renderFood(foods, destData ? destData.name : destName);
 

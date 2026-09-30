@@ -1,19 +1,29 @@
 /* ============================================================
- * 地图模块：Leaflet + OpenStreetMap（无需 API Key）
- *  - 起点 → 目的地行进路线（尝试 OSRM 免费路线服务，失败则直线）
- *  - 目的地景点游玩路线（序号标记 + 连线）
+ * 地图模块：Leaflet（无需 API Key）
+ *  - 默认 CARTO Voyager 瓦片（CDN 分发，403/加载失败率更低）
+ *  - 备用 OpenStreetMap 瓦片 + 图层切换
+ *  - 瓦片加载失败自动回退到备用源
+ *  - 起点 → 目的地行进路线（OSRM，失败退化为直线）
+ *  - 景点游玩路线（序号标记 + 连线）
  * ============================================================ */
 (function (global) {
   'use strict';
 
-  var TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   var OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
 
-  var OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  // 瓦片源：优先 CARTO（CDN），失败自动回退 OSM
+  var BASELAYERS = {
+    'CARTO 简洁地图': L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd', maxZoom: 20
+    }),
+    'OpenStreetMap': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    })
+  };
 
-  /**
-   * 请求 OSRM 路线（GeoJSON LineString）
-   */
+  /** OSRM 行进路线（GeoJSON LineString） */
   async function fetchTravelRoute(start, dest) {
     var url = OSRM_URL +
       start.lng + ',' + start.lat + ';' + dest.lng + ',' + dest.lat +
@@ -24,7 +34,7 @@
     if (json.code !== 'Ok' || !json.routes || !json.routes.length) {
       throw new Error('OSRM 无可用路线');
     }
-    return json.routes[0].geometry; // { type: 'LineString', coordinates: [[lng,lat], ...] }
+    return json.routes[0].geometry;
   }
 
   function numberIcon(i) {
@@ -36,23 +46,14 @@
     });
   }
 
-  /**
-   * 绘制旅行路线图
-   * plan: {
-   *   start: { name, lat, lng },
-   *   dest:  { name, lat, lng },
-   *   attractions: [ { name, lat, lng }, ... ],
-   *   travelRoute: LineString | null   (起点→目的地)
-   * }
-   */
   function drawPlan(containerId, plan) {
     var container = document.getElementById(containerId);
     if (!container) return null;
 
-    // 销毁旧实例，避免重复初始化
-    if (container._leaflet_id) {
-      var old = global.__tripMap;
-      if (old) { old.remove(); old = null; }
+    // 销毁旧实例
+    if (container._leaflet_id && global.__tripMap) {
+      try { global.__tripMap.remove(); } catch (e) { /* ignore */ }
+      global.__tripMap = null;
     }
 
     var points = [];
@@ -62,9 +63,25 @@
     var map = L.map(containerId, { scrollWheelZoom: true });
     global.__tripMap = map;
 
-    L.tileLayer(TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map);
+    // 默认图层 + 失败自动回退
+    var primary = BASELAYERS['CARTO 简洁地图'];
+    var fallback = BASELAYERS['OpenStreetMap'];
+    primary.addTo(map);
+    var switched = false;
+    var errCount = 0;
+    primary.on('tileerror', function () {
+      errCount++;
+      if (!switched && errCount >= 4) {
+        switched = true;
+        map.removeLayer(primary);
+        fallback.addTo(map);
+        rebuildControl(map, fallback, primary);
+      }
+    });
 
-    // 起点 / 终点标记
+    addLayerControl(map, primary, fallback);
+
+    // 起点 / 终点
     if (start && start.lat != null) {
       points.push([start.lat, start.lng]);
       L.circleMarker([start.lat, start.lng], {
@@ -78,7 +95,7 @@
       }).addTo(map).bindPopup('<b>目的地</b><br>' + (dest.name || ''));
     }
 
-    // 起点 → 目的地行进路线（蓝色）
+    // 行进路线（蓝）
     if (plan.travelRoute && plan.travelRoute.coordinates && plan.travelRoute.coordinates.length) {
       var latlngs = plan.travelRoute.coordinates.map(function (c) { return [c[1], c[0]]; });
       L.polyline(latlngs, { color: '#2f6bff', weight: 4, opacity: 0.85, dashArray: '8 6' }).addTo(map);
@@ -89,12 +106,9 @@
       }).addTo(map);
     }
 
-    // 景点游玩路线（橙色） + 序号标记
+    // 景点游玩路线（橙）+ 序号
     if (attrs.length) {
-      attrs.forEach(function (a) {
-        if (a.lat == null) return;
-        points.push([a.lat, a.lng]);
-      });
+      attrs.forEach(function (a) { if (a.lat != null) points.push([a.lat, a.lng]); });
       var attrLatLngs = attrs.filter(function (a) { return a.lat != null; })
         .map(function (a) { return [a.lat, a.lng]; });
       if (attrLatLngs.length > 1) {
@@ -108,7 +122,6 @@
       });
     }
 
-    // 自适应视野
     if (points.length) {
       map.fitBounds(L.latLngBounds(points), { padding: [30, 30] });
     } else if (dest && dest.lat != null) {
@@ -116,6 +129,21 @@
     }
 
     return map;
+  }
+
+  function addLayerControl(map, primary, fallback) {
+    var control = L.control.layers(
+      { 'CARTO 简洁地图': primary, 'OpenStreetMap': fallback },
+      null, { position: 'topright' }
+    );
+    control.addTo(map);
+    map._controlLayers = control;
+  }
+
+  function rebuildControl(map, a, b) {
+    try { if (map._controlLayers) map.removeControl(map._controlLayers); } catch (e) { /* ignore */ }
+    map._controlLayers = null;
+    addLayerControl(map, a, b);
   }
 
   global.TripMap = { fetchTravelRoute: fetchTravelRoute, drawPlan: drawPlan };
