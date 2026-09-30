@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="免费、无需注册的旅游攻略生成器：输入起点和终点，一键生成出行方式、游玩方式、游玩时长、目的地天气、穿搭推荐、携带物品、旅游路线、景点介绍、美食推荐和旅行路线图。">
+  <title>旅行攻略生成器 · Trip Planner</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🧭%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1>🧭 旅行攻略生成器</h1>
+      <p class="subtitle">输入起点与终点，一键生成完整出行攻略：出行方式 · 游玩方式 · 时长 · 天气 · 穿搭 · 物品 · 路线 · 景点 · 美食 · 路线图</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ============ 输入面板 ============ -->
+    <section class="panel input-panel" aria-label="行程输入">
+      <form id="plannerForm" autocomplete="off">
+        <div class="row place-row">
+          <div class="field">
+            <label for="startInput">起点</label>
+            <input type="text" id="startInput" placeholder="例如：北京" required>
+          </div>
+          <div class="swap-icon" title="交换起点终点" id="swapBtn">⇄</div>
+          <div class="field">
+            <label for="destInput">终点（目的地）</label>
+            <input type="text" id="destInput" placeholder="例如：杭州" required>
+          </div>
+          <div class="field date-field">
+            <label for="dateInput">出发日期</label>
+            <input type="date" id="dateInput">
+          </div>
+        </div>
+
+        <!-- 可切换模块 1：出行方式 -->
+        <div class="switch-group">
+          <div class="switch-head">
+            <span class="switch-label">🚗 出行方式</span>
+            <span class="rec-badge" id="travelModeRec" hidden>⭐ 推荐</span>
+          </div>
+          <div class="segments" id="travelModeGroup" role="radiogroup" aria-label="出行方式">
+            <label class="seg"><input type="radio" name="travelMode" value="自驾" checked><span>自驾</span></label>
+            <label class="seg"><input type="radio" name="travelMode" value="打车"><span>打车</span></label>
+            <label class="seg"><input type="radio" name="travelMode" value="火车"><span>火车</span></label>
+            <label class="seg"><input type="radio" name="travelMode" value="高铁"><span>高铁</span></label>
+            <label class="seg"><input type="radio" name="travelMode" value="飞机"><span>飞机</span></label>
+            <label class="seg"><input type="radio" name="travelMode" value="邮轮"><span>邮轮</span></label>
+            <label class="seg"><input type="radio" name="travelMode" value="大巴"><span>大巴</span></label>
+          </div>
+        </div>
+
+        <!-- 可切换模块 2：游玩方式 -->
+        <div class="switch-group">
+          <div class="switch-head">
+            <span class="switch-label">🎒 游玩方式</span>
+            <span class="rec-badge" id="playModeRec" hidden>⭐ 推荐</span>
+          </div>
+          <div class="segments" id="playModeGroup" role="radiogroup" aria-label="游玩方式">
+            <label class="seg"><input type="radio" name="playMode" value="公共交通" checked><span>公共交通</span></label>
+            <label class="seg"><input type="radio" name="playMode" value="打车"><span>打车</span></label>
+            <label class="seg"><input type="radio" name="playMode" value="自驾"><span>自驾</span></label>
+            <label class="seg"><input type="radio" name="playMode" value="包车"><span>包车</span></label>
+            <label class="seg"><input type="radio" name="playMode" value="租车"><span>租车</span></label>
+          </div>
+        </div>
+
+        <!-- 可切换模块 3：游玩时长 -->
+        <div class="switch-group">
+          <div class="switch-head">
+            <span class="switch-label">📅 游玩时长</span>
+            <span class="rec-badge" id="durationRec" hidden>⭐ 推荐</span>
+          </div>
+          <div class="segments" id="durationGroup" role="radiogroup" aria-label="游玩时长">
+            <label class="seg"><input type="radio" name="duration" value="一天一夜"><span>一天一夜</span></label>
+            <label class="seg"><input type="radio" name="duration" value="两天一夜"><span>两天一夜</span></label>
+            <label class="seg"><input type="radio" name="duration" value="三天两夜" checked><span>三天两夜</span></label>
+            <label class="seg"><input type="radio" name="duration" value="四天三夜"><span>四天三夜</span></label>
+            <label class="seg"><input type="radio" name="duration" value="五天四夜"><span>五天四夜</span></label>
+            <label class="seg"><input type="radio" name="duration" value="六天五夜"><span>六天五夜</span></label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="generateBtn" class="btn-primary">✨ 生成攻略</button>
+          <button type="button" id="resetBtn" class="btn-ghost">重置</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============ 加载 / 错误 ============ -->
+    <div id="loading" class="loading" hidden>
+      <div class="spinner"></div>
+      <p>正在查询天气、规划路线、生成攻略…</p>
+    </div>
+    <div id="errorBox" class="error-box" hidden></div>
+
+    <!-- ============ 结果 ============ -->
+    <section id="results" hidden aria-live="polite">
+      <!-- 概览 -->
+      <article class="card summary-card">
+        <h2 class="card-title">🗺️ 行程概览</h2>
+        <div class="summary-grid">
+          <div class="summary-item"><span class="k">路线</span><span class="v" id="sumRoute">—</span></div>
+          <div class="summary-item"><span class="k">出行方式</span><span class="v" id="sumTravel">—</span></div>
+          <div class="summary-item"><span class="k">游玩方式</span><span class="v" id="sumPlay">—</span></div>
+          <div class="summary-item"><span class="k">游玩时长</span><span class="v" id="sumDuration">—</span></div>
+          <div class="summary-item"><span class="k">两地距离</span><span class="v" id="sumDistance">—</span></div>
+          <div class="summary-item"><span class="k">目的地</span><span class="v" id="sumDest">—</span></div>
+        </div>
+        <p class="summary-note" id="sumNote"></p>
+      </article>
+
+      <!-- 天气 -->
+      <article class="card">
+        <h2 class="card-title">🌤️ 目的地天气</h2>
+        <div id="weatherWrap" class="weather-wrap"></div>
+      </article>
+
+      <!-- 穿搭 -->
+      <article class="card">
+        <h2 class="card-title">👗 推荐穿搭</h2>
+        <div id="clothingWrap"></div>
+      </article>
+
+      <!-- 物品 -->
+      <article class="card">
+        <h2 class="card-title">🎒 推荐携带物品</h2>
+        <div id="itemsWrap" class="items-wrap"></div>
+      </article>
+
+      <!-- 路线 -->
+      <article class="card">
+        <h2 class="card-title">🛣️ 旅游路线</h2>
+        <div id="routeWrap" class="route-wrap"></div>
+      </article>
+
+      <!-- 景点 -->
+      <article class="card">
+        <h2 class="card-title">🏞️ 途经景点介绍</h2>
+        <div id="attractionsWrap" class="attractions-grid"></div>
+      </article>
+
+      <!-- 美食 -->
+      <article class="card">
+        <h2 class="card-title">🍜 美食推荐</h2>
+        <div id="foodWrap" class="food-grid"></div>
+      </article>
+
+      <!-- 地图 -->
+      <article class="card map-card">
+        <h2 class="card-title">📍 旅行路线图</h2>
+        <p class="map-hint">蓝线：起点到目的地的行进路线　·　橙线：目的地景点游玩路线（序号即游览顺序）</p>
+        <div id="map"></div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>数据来源：Open-Meteo（天气）· OpenStreetMap / Leaflet（地图）· OSRM（路线）。内容由内置知识库与规则生成，仅供参考，出行前请以官方信息为准。</p>
+    </div>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/weather.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
