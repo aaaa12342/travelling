@@ -711,25 +711,84 @@
     '姑苏': '苏州',
     '星城': '长沙',
     '冰城': '哈尔滨',
-    '日光城': '拉萨'
+    '日光城': '拉萨',
+    // 景区 / 自治州 / 别名 → 地级行政区
+    '吉林': '吉林市',
+    '大理州': '大理',
+    '平遥': '晋中', '平遥古城': '晋中',
+    '曲阜': '济宁',
+    '泰山': '泰安',
+    '峨眉山': '乐山',
+    '敦煌': '酒泉', '莫高窟': '酒泉',
+    '香格里拉': '迪庆', '迪庆州': '迪庆',
+    '九寨沟': '阿坝', '阿坝州': '阿坝',
+    '稻城': '甘孜', '稻城亚丁': '甘孜', '甘孜州': '甘孜',
+    '泸沽湖': '丽江',
+    '凉山州': '凉山', '西昌': '凉山',
+    '延边州': '延边', '长白山': '延边',
+    '黔东南州': '黔东南', '千户苗寨': '黔东南', '西江': '黔东南',
+    '黔南州': '黔南', '荔波': '黔南',
+    '黔西南州': '黔西南', '万峰林': '黔西南', '兴义': '黔西南',
+    '湘西州': '湘西', '凤凰': '湘西', '凤凰古城': '湘西',
+    '红河州': '红河', '元阳': '红河',
+    '西双版纳州': '西双版纳', '景洪': '西双版纳',
+    '阿尔山': '兴安盟', '兴安': '兴安盟',
+    '锡林郭勒': '锡林郭勒盟',
+    '阿拉善': '阿拉善盟',
+    '漠河': '大兴安岭', '北极村': '大兴安岭',
+    '甘南州': '甘南',
+    '茶卡': '海西', '茶卡盐湖': '海西', '海西州': '海西',
+    '青海湖': '海北', '海北州': '海北',
+    '库尔勒': '巴音郭楞',
+    '赛里木湖': '博尔塔拉',
+    '武夷山': '南平',
+    '婺源': '上饶',
+    '黄果树': '安顺',
+    '腾冲': '保山',
+    '九华山': '池州',
+    '普陀山': '舟山',
+    '武当山': '十堰',
+    '五台山': '忻州',
+    '华山': '渭南',
+    '喀纳斯': '阿勒泰', '禾木': '阿勒泰'
   };
 
   function normalizeCity(name) {
     if (!name) return '';
     var s = String(name).trim();
-    s = s.replace(/(市|省|自治区|特别行政区|地区|州)$/, '');
+    s = s.replace(/(市|省|自治区|特别行政区|地区)$/, '');
     return s;
+  }
+
+  function lookupAll() {
+    return {
+      db: DB,
+      rich: global.CITY_RICH || {},
+      extra: global.CITY_EXTRA || {}
+    };
   }
 
   function findDestination(name) {
     var key = normalizeCity(name);
     if (ALIASES[key]) key = ALIASES[key];
-    if (DB[key]) return { key: key, data: DB[key] };
-    var keys = Object.keys(DB);
-    for (var i = 0; i < keys.length; i++) {
-      if (key && (keys[i].indexOf(key) === 0 || key.indexOf(keys[i]) === 0)) {
-        return { key: keys[i], data: DB[keys[i]] };
-      }
+    var all = lookupAll();
+    if (all.db[key]) return { key: key, data: all.db[key], curated: true };
+    if (all.rich[key]) return { key: key, data: all.rich[key], curated: true };
+    if (all.extra[key]) return { key: key, data: all.extra[key], curated: false };
+
+    // 模糊匹配（仅当前缀命中唯一时）
+    var cand = [];
+    [all.db, all.rich, all.extra].forEach(function (src) {
+      Object.keys(src).forEach(function (k) {
+        if (key && (k.indexOf(key) === 0 || key.indexOf(k) === 0)) cand.push(k);
+      });
+    });
+    var uniq = cand.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    if (uniq.length === 1) {
+      var ck = uniq[0];
+      if (all.db[ck]) return { key: ck, data: all.db[ck], curated: true };
+      if (all.rich[ck]) return { key: ck, data: all.rich[ck], curated: true };
+      if (all.extra[ck]) return { key: ck, data: all.extra[ck], curated: false };
     }
     return null;
   }

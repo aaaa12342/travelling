@@ -96,12 +96,42 @@
     });
   }
 
-  /* ---------- 附近景点（未收录目的地的兜底） ---------- */
+  /* ---------- 附近景点（未手写景点城市：OpenStreetMap 实时检索 + 类型模板） ---------- */
+  var CAT_TEMPLATES = {
+    '博物馆': { label: '博物馆', desc: '馆藏当地历史与特色文物，是了解城市文化的窗口。', highlights: ['看馆藏代表性文物', '了解当地历史脉络'], duration: '2小时' },
+    '寺庙': { label: '寺庙', desc: '香火旺盛的古刹，建筑与宗教文化底蕴深厚。', highlights: ['参拜大殿', '看古建筑与碑刻'], duration: '1-2小时' },
+    '公园': { label: '公园', desc: '市民休闲的城市绿地，适合散步放松。', highlights: ['散步休闲', '赏花看景'], duration: '1-2小时' },
+    '古城': { label: '古城', desc: '保留老城风貌的历史街区。', highlights: ['逛老街巷', '看古建筑'], duration: '2小时' },
+    '历史': { label: '历史', desc: '承载当地历史记忆的名胜古迹。', highlights: ['实地参观', '了解历史典故'], duration: '1-2小时' },
+    '自然': { label: '自然', desc: '自然山水风光，适合户外游览。', highlights: ['观景拍照', '徒步游览'], duration: '半天' },
+    '游乐园': { label: '游乐园', desc: '主题乐园，适合亲子与娱乐。', highlights: ['玩游乐项目', '看表演'], duration: '半天' },
+    '动物园': { label: '动物园', desc: '观赏各种动物，亲子游好去处。', highlights: ['看动物', '亲近自然'], duration: '2-3小时' },
+    '海滩': { label: '海滩', desc: '滨海沙滩，适合玩水休闲。', highlights: ['玩水踏浪', '看海景'], duration: '半天' },
+    '观景点': { label: '观景点', desc: '俯瞰城市或山水的绝佳位置。', highlights: ['登高望远', '拍全景'], duration: '1小时' },
+    '景点': { label: '景点', desc: '当地代表性游览点，值得一逛。', highlights: ['实地游览', '拍照打卡'], duration: '1-2小时' }
+  };
+
+  function classifyOsm(tags) {
+    var t = tags.tourism;
+    if (t === 'museum' || t === 'gallery') return '博物馆';
+    if (t === 'theme_park' || t === 'attraction' && (tags.attraction === 'roller_coaster' || tags.leisure === 'water_park')) return '游乐园';
+    if (t === 'zoo' || t === 'aquarium') return '动物园';
+    if (t === 'viewpoint') return '观景点';
+    if (t === 'artwork') return '景点';
+    if (tags.historic && /castle|monument|fort|ruins|citywalls|city_gate|memorial/.test(tags.historic)) return '历史';
+    if (tags.natural === 'beach' || tags.beach) return '海滩';
+    if (tags.leisure === 'park' || tags.landuse === 'recreation_ground') return '公园';
+    if (tags.amenity === 'place_of_worship' && /buddhist|taoist|shinto/.test(tags.religion || '')) return '寺庙';
+    return '景点';
+  }
+
   async function fetchNearbyAttractions(lat, lng) {
     var query = '[out:json][timeout:25];(' +
-      'node["tourism"~"attraction|viewpoint|museum|theme_park"](around:20000,' + lat + ',' + lng + ');' +
-      'way["tourism"~"attraction|viewpoint|museum"](around:20000,' + lat + ',' + lng + ');' +
-      ');out center 40;';
+      'node["tourism"~"attraction|viewpoint|museum|theme_park|zoo|aquarium|artwork|gallery"](around:25000,' + lat + ',' + lng + ');' +
+      'way["tourism"~"attraction|viewpoint|museum|theme_park|zoo"](around:25000,' + lat + ',' + lng + ');' +
+      'node["historic"~"castle|monument|fort|ruins|citywalls|city_gate|memorial"](around:25000,' + lat + ',' + lng + ');' +
+      'node["natural"="beach"](around:25000,' + lat + ',' + lng + ');' +
+      ');out center 60;';
     var url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
     var res = await fetch(url);
     if (!res.ok) throw new Error('Overpass ' + res.status);
@@ -116,8 +146,16 @@
       if (!name || la == null) return;
       if (seen[name]) return;
       seen[name] = 1;
-      out.push({ name: name, lat: la, lng: lo, category: '景点', duration: '1-2小时', desc: '由 OpenStreetMap 提供的当地景点，详情可结合当地攻略进一步了解。' });
+      var tpl = CAT_TEMPLATES[classifyOsm(tags)] || CAT_TEMPLATES['景点'];
+      out.push({
+        name: name, lat: la, lng: lo,
+        category: tpl.label, duration: tpl.duration,
+        desc: tpl.desc, highlights: tpl.highlights.slice(),
+        metro: null, get: '查询当地公交 / 打车前往'
+      });
     });
+    // 按距离市中心排序
+    out.sort(function (a, b) { return haversineKm({ lat: lat, lng: lng }, a) - haversineKm({ lat: lat, lng: lng }, b); });
     return out.slice(0, 6);
   }
 
@@ -180,13 +218,14 @@
     $('sumPlay').textContent = s.playMode;
     $('sumDuration').textContent = s.duration + '（' + s.days + '天' + (s.nights ? s.nights + '晚' : '') + '）';
     $('sumDistance').textContent = fmtKm(s.km);
-    $('sumDest').textContent = destData ? (destData.name + ' · ' + destData.typeName) : s.destName;
+    $('sumDest').textContent = destData ? (destData.name + (destData.province ? ' · ' + destData.province : '') + ' · ' + destData.typeName) : s.destName;
 
     var notes = [];
     notes.push('推荐出行方式：<b>' + rec.travel.mode + '</b> — ' + rec.travel.reason);
     notes.push('推荐游玩方式：<b>' + rec.play.mode + '</b> — ' + rec.play.reason);
     notes.push('推荐时长：<b>' + rec.duration.mode + '</b> — ' + rec.duration.reason);
     if (destData) notes.push('目的地速览：' + destData.overview);
+    if (destData && destData.tips) notes.push('💡 实用贴士：' + destData.tips);
     $('sumNote').innerHTML = notes.join('<br>');
   }
 
@@ -388,8 +427,8 @@
       var found = findDestination(destName);
       var destData = found ? found.data : null;
       var destType = destData ? destData.type : 'city';
-      var attractions = destData ? destData.attractions.slice() : [];
-      var foods = destData ? destData.foods.slice() : [];
+      var attractions = (destData && destData.attractions) ? destData.attractions.slice() : [];
+      var foods = (destData && destData.foods) ? destData.foods.slice() : [];
       if (!attractions.length) {
         try { attractions = await fetchNearbyAttractions(destGeo.lat, destGeo.lng); } catch (e) { attractions = []; }
       }
@@ -438,8 +477,10 @@
         days: dur.days, nights: dur.nights, km: km
       }, rec, destData ? {
         name: destData.name,
+        province: destData.province,
         typeName: TYPE_NAME[destType] || '目的地',
-        overview: destData.overview
+        overview: destData.overview,
+        tips: destData.tips
       } : null);
 
       renderWeather(weather, dur.days);
